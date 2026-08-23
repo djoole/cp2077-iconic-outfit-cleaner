@@ -1,0 +1,20 @@
+# Build outputs
+build/bin/
+frontend/dist/
+
+# Frontend dependencies
+frontend/node_modules/
+
+# Go and Wails temporary files
+*.exe
+*.test
+*.out
+*.syso
+.tmp-*
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

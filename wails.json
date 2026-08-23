@@ -1,0 +1,26 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "CP2077 Iconic Outfit Cleaner",
+  "outputfilename": "CP2077-Iconic-Outfit-Cleaner",
+  "frontend:dir": "frontend",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "http://localhost:5173",
+  "wailsjs:dir": "frontend/wailsjs",
+  "version": "2",
+  "assetdir": "frontend/dist",
+  "info": {
+    "companyName": "CP2077 Iconic Outfit Cleaner contributors",
+    "productName": "CP2077 Iconic Outfit Cleaner",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright (c) 2026 CP2077 Iconic Outfit Cleaner contributors",
+    "comments": "Removes Iconic status from selected modded Cyberpunk 2077 outfits."
+  },
+  "windows": {
+    "webviewIsFixed": true
+  },
+  "platforms": [
+    { "os": "windows", "arch": "amd64", "ldflags": "-H windowsgui" }
+  ]
+}
