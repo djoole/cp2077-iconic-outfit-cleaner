@@ -34,6 +34,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --dir frontend build
+
       - name: Run Go tests
         run: go test ./...
 
@@ -49,4 +55,3 @@ jobs:
           name: CP2077-Iconic-Outfit-Cleaner-windows-amd64
           path: build/bin/CP2077-Iconic-Outfit-Cleaner.exe
           if-no-files-found: error
-
