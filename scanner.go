@@ -400,12 +400,25 @@ func extractInstancesBlock(lines []string) string {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if leadingSpaces(lines[i]) <= baseIndent {
+		indent := leadingSpaces(lines[i])
+		if indent < baseIndent {
+			end = i
+			break
+		}
+		if indent == baseIndent && trimmed != "-" && !strings.HasPrefix(trimmed, "- ") {
 			end = i
 			break
 		}
 	}
-	block := strings.Join(lines[start:end], "\n")
+	blockLines := append([]string(nil), lines[start:end]...)
+	if baseIndent > 0 {
+		for i, line := range blockLines {
+			if len(line) >= baseIndent {
+				blockLines[i] = line[baseIndent:]
+			}
+		}
+	}
+	block := strings.Join(blockLines, "\n")
 	if block != "" && !strings.HasSuffix(block, "\n") {
 		block += "\n"
 	}

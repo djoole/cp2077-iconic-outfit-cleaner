@@ -102,6 +102,53 @@ func TestExpandTemplateIDsPreservesScalarText(t *testing.T) {
 	}
 }
 
+func TestIndentlessInstancesExpandMasuryanStyleTemplate(t *testing.T) {
+	root := t.TempDir()
+	tweaks := filepath.Join(root, "r6", "tweaks", "masuryan")
+	if err := os.MkdirAll(tweaks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := `Items.masuryans_split_dress_${base_color}:
+  $base: Items.GenericInnerChestClothing
+  $instances:
+  - { base_color: black, icon: slot_01 }
+  - { base_color: pattern_05, icon: slot_23 }
+  quality: Quality.Legendary
+  statModifiers:
+    - !append Quality.IconicItem
+`
+	path := filepath.Join(tweaks, "masuryans_split_dress.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewScanner().Scan(root, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.mods) != 1 || len(result.mods[0].items) != 1 {
+		t.Fatalf("got %d mods, expected one template item", len(result.mods))
+	}
+	got := result.mods[0].items[0].concreteIDs
+	want := []string{"Items.masuryans_split_dress_black", "Items.masuryans_split_dress_pattern_05"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	generated, err := NewScanner().Generate(result, []string{result.mods[0].id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(generated.PatchPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range want {
+		if !strings.Contains(string(data), `this.RemoveIconic(t"`+id+`");`) {
+			t.Fatalf("generated patch lacks %s", id)
+		}
+	}
+}
+
 func TestScanFindsMO2ModsRecursivelyAndUsesCustomOutput(t *testing.T) {
 	scanRoot := t.TempDir()
 	outputRoot := filepath.Join(t.TempDir(), "Iconic Outfit Cleaner")
