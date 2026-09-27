@@ -15,14 +15,15 @@ It scans installed TweakXL YAML files, identifies clothing records containing `Q
 
 1. Download `CP2077-Iconic-Outfit-Cleaner.exe` from the latest GitHub release or Nexus Mods.
 2. Close Cyberpunk 2077.
-3. Run the application. The game folder is detected automatically when possible.
-4. Review the detected outfit mods. All are selected by default; deselect any mod that should keep its Iconic items.
-5. Select **Generate patch**, then launch the game normally.
+3. Run the application. The game folder is used as both the scan root and patch destination by default.
+4. If you use Mod Organizer 2 or another virtualized mod manager, select its mods folder as the **Mod scan root**, then select a manager-controlled mod folder as the **Patch destination**.
+5. Review the detected outfit mods. All are selected by default; deselect any mod that should keep its Iconic items.
+6. Select **Generate patch**, enable the generated mod in your mod manager if necessary, then launch the game normally.
 
-The generated file is written to:
+The generated file is written under the selected patch destination:
 
 ```text
-Cyberpunk 2077\r6\scripts\IconicOutfitCleaner\generated.reds
+<patch destination>\r6\scripts\IconicOutfitCleaner\generated.reds
 ```
 
 Run the cleaner again after installing or updating outfit mods.
@@ -30,6 +31,9 @@ Run the cleaner again after installing or updating outfit mods.
 ## Features
 
 - Detects Steam, GOG, Epic and registered Windows installations automatically.
+- Recursively discovers every `r6\tweaks` folder under a user-selected scan root.
+- Supports Mod Organizer 2 and other managers that keep mods outside the game directory.
+- Lets the user choose a separate patch destination managed by their mod manager.
 - Uses `vortex.deployment.json` when available to map every YAML file to its exact source mod.
 - Selects all affected mods by default and lets the user exclude individual mods.
 - Ignores weapons and other Iconic records that are not clothing.
@@ -45,7 +49,7 @@ The cleaner therefore generates a TweakXL `ScriptableTweak`. It runs after decla
 
 ## Privacy and file access
 
-The application does not connect to the internet, collect telemetry, launch the game, or modify outfit source files. It reads TweakXL YAML files and the optional Vortex deployment manifest. It writes only its generated script, its backups, and a small local configuration containing the last detected game path.
+The application does not connect to the internet, collect telemetry, launch the game, or modify outfit source files. It reads TweakXL YAML files and the optional Vortex deployment manifest. It writes only its generated script, its backups, and a small local configuration containing the last selected scan and output paths.
 
 Configuration is stored under:
 

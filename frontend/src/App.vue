@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Check, ChevronDown, ChevronRight, FolderOpen, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-vue-next'
-import { DetectGameDir, GeneratePatch, OpenPatchFolder, PickGameDir, Scan } from '../wailsjs/go/main/App'
+import { DetectPaths, GeneratePatch, OpenPatchFolder, PickOutputRoot, PickScanRoot, Scan } from '../wailsjs/go/main/App'
 
 type Item = { recordId: string; sourceFile: string; originalQuality: string; template: boolean }
 type Mod = { id: string; name: string; sourceLabel: string; itemCount: number; fileCount: number; items: Item[] }
-type ScanResult = { gameDir: string; mods: Mod[]; totalItems: number; scannedFiles: number; usingVortex: boolean; patchPath: string; warnings: string[] }
+type ScanResult = { scanRoot: string; outputRoot: string; mods: Mod[]; totalItems: number; scannedFiles: number; tweaksFolders: number; usingVortex: boolean; patchPath: string; warnings: string[] }
 
-const gameDir = ref('')
+const scanRoot = ref('')
+const outputRoot = ref('')
 const scan = ref<ScanResult | null>(null)
 const selected = ref(new Set<string>())
 const expanded = ref(new Set<string>())
@@ -47,16 +48,33 @@ function selectVisible(value: boolean) {
   selected.value = next
 }
 
-async function chooseFolder() {
-  const path = await PickGameDir()
-  if (path) gameDir.value = path
+function invalidateScan() {
+  scan.value = null
+  selected.value = new Set()
+  expanded.value = new Set()
+  message.value = ''
+}
+async function chooseScanRoot() {
+  const path = await PickScanRoot(scanRoot.value)
+  if (path && path !== scanRoot.value) {
+    scanRoot.value = path
+    invalidateScan()
+  }
+}
+async function chooseOutputRoot() {
+  const path = await PickOutputRoot(outputRoot.value)
+  if (path && path !== outputRoot.value) {
+    outputRoot.value = path
+    invalidateScan()
+  }
 }
 async function runScan() {
   busy.value = true; error.value = ''; message.value = ''
   try {
-    const result = await Scan(gameDir.value) as ScanResult
+    const result = await Scan(scanRoot.value, outputRoot.value) as ScanResult
     scan.value = result
-    gameDir.value = result.gameDir
+    scanRoot.value = result.scanRoot
+    outputRoot.value = result.outputRoot
     replaceSet(selected, result.mods.map(mod => mod.id))
     expanded.value = new Set()
     message.value = result.mods.length
@@ -81,13 +99,16 @@ async function openPatch() {
 
 onMounted(async () => {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('demo')) {
-    gameDir.value = 'C:\\Games\\Steam\\steamapps\\common\\Cyberpunk 2077'
+    scanRoot.value = 'C:\\Tools\\MO2\\mods'
+    outputRoot.value = 'C:\\Tools\\MO2\\mods\\Iconic Outfit Cleaner'
     scan.value = {
-      gameDir: gameDir.value,
+      scanRoot: scanRoot.value,
+      outputRoot: outputRoot.value,
       totalItems: 2072,
       scannedFiles: 1941,
+      tweaksFolders: 286,
       usingVortex: true,
-      patchPath: gameDir.value + '\\r6\\scripts\\IconicOutfitCleaner\\generated.reds',
+      patchPath: outputRoot.value + '\\r6\\scripts\\IconicOutfitCleaner\\generated.reds',
       warnings: [],
       mods: [
         { id: 'adshield-tactical', name: 'Adshield Tactical Crop Top - Angel', sourceLabel: 'Adshield Tactical Crop Top - Angel-8406-1-01-1718072348', itemCount: 42, fileCount: 1, items: [{ recordId: 'Items.Adshield_Tac_Crop_Top_Black_FL', sourceFile: 'r6/tweaks/adshield/Tac_Crop_Top.yaml', originalQuality: 'Quality.Legendary', template: false }] },
@@ -99,8 +120,10 @@ onMounted(async () => {
     message.value = '240 affected mods found — all selected by default.'
     return
   }
-  gameDir.value = await DetectGameDir()
-  if (gameDir.value) await runScan()
+  const defaults = await DetectPaths()
+  scanRoot.value = defaults.scanRoot
+  outputRoot.value = defaults.outputRoot
+  if (scanRoot.value && outputRoot.value) await runScan()
 })
 </script>
 
@@ -113,15 +136,24 @@ onMounted(async () => {
         <h1>CP2077 Iconic Outfit Cleaner</h1>
         <p class="subtitle">Remove iconic status from selected modded outfits.</p>
       </div>
-      <div v-if="scan" class="scan-badge" :title="scan.usingVortex ? 'Exact file ownership was read from vortex.deployment.json.' : 'Source names were inferred from tweak folders and filenames.'"><ShieldCheck :size="17" />{{ scan.usingVortex ? 'Vortex source mapping active' : 'Source names inferred' }}</div>
+      <div v-if="scan" class="scan-badge" :title="scan.usingVortex ? 'Exact file ownership was read from vortex.deployment.json.' : 'Source names were inferred from discovered mod folders.'"><ShieldCheck :size="17" />{{ scan.usingVortex ? 'Vortex source mapping active' : 'Folder source mapping active' }}</div>
     </header>
 
     <section class="path-card">
-      <label>Game folder</label>
-      <div class="path-row">
-        <input v-model="gameDir" placeholder="…\Cyberpunk 2077" @keyup.enter="runScan" />
-        <button class="icon-button" title="Browse" @click="chooseFolder"><FolderOpen :size="19" /></button>
-        <button class="primary compact" :disabled="busy || !gameDir" @click="runScan"><RefreshCw :size="17" :class="{ spinning: busy }" />Scan</button>
+      <div class="path-field">
+        <label>Mod scan root <span>Searches recursively for every r6\tweaks folder</span></label>
+        <div class="path-row">
+          <input v-model="scanRoot" placeholder="…\Cyberpunk 2077 or …\MO2\mods" @input="invalidateScan" @keyup.enter="runScan" />
+          <button class="icon-button" title="Browse for scan folder" @click="chooseScanRoot"><FolderOpen :size="19" /></button>
+        </div>
+      </div>
+      <div class="path-field">
+        <label>Patch destination <span>The generated r6\scripts folder will be created here</span></label>
+        <div class="path-row">
+          <input v-model="outputRoot" placeholder="…\Cyberpunk 2077 or …\MO2\mods\Iconic Outfit Cleaner" @input="invalidateScan" @keyup.enter="runScan" />
+          <button class="icon-button" title="Browse for patch destination" @click="chooseOutputRoot"><FolderOpen :size="19" /></button>
+          <button class="primary compact" :disabled="busy || !scanRoot || !outputRoot" @click="runScan"><RefreshCw :size="17" :class="{ spinning: busy }" />Scan</button>
+        </div>
       </div>
     </section>
 
@@ -134,6 +166,7 @@ onMounted(async () => {
           <div><strong>{{ scan.mods.length }}</strong><span>affected mods</span></div>
           <div><strong>{{ scan.totalItems }}</strong><span>records Iconic</span></div>
           <div><strong>{{ scan.scannedFiles }}</strong><span>YAML files scanned</span></div>
+          <div><strong>{{ scan.tweaksFolders }}</strong><span>tweak folders found</span></div>
         </div>
         <div class="search"><Search :size="17" /><input v-model="query" placeholder="Filter mods or Item IDs…" /></div>
       </div>

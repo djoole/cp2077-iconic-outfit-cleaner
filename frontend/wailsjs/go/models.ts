@@ -78,11 +78,27 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class PathDefaultsDTO {
+	    scanRoot: string;
+	    outputRoot: string;
+
+	    static createFrom(source: any = {}) {
+	        return new PathDefaultsDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scanRoot = source["scanRoot"];
+	        this.outputRoot = source["outputRoot"];
+	    }
+	}
 	export class ScanResultDTO {
-	    gameDir: string;
+	    scanRoot: string;
+	    outputRoot: string;
 	    mods: ModDTO[];
 	    totalItems: number;
 	    scannedFiles: number;
+	    tweaksFolders: number;
 	    usingVortex: boolean;
 	    patchPath: string;
 	    warnings: string[];
@@ -93,10 +109,12 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.gameDir = source["gameDir"];
+	        this.scanRoot = source["scanRoot"];
+	        this.outputRoot = source["outputRoot"];
 	        this.mods = this.convertValues(source["mods"], ModDTO);
 	        this.totalItems = source["totalItems"];
 	        this.scannedFiles = source["scannedFiles"];
+	        this.tweaksFolders = source["tweaksFolders"];
 	        this.usingVortex = source["usingVortex"];
 	        this.patchPath = source["patchPath"];
 	        this.warnings = source["warnings"];
@@ -122,4 +140,3 @@ export namespace main {
 	}
 
 }
-

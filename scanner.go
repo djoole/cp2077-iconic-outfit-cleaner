@@ -66,68 +66,87 @@ type modResult struct {
 }
 
 type scanResult struct {
-	gameDir      string
-	patchPath    string
-	mods         []*modResult
-	totalItems   int
-	scannedFiles int
-	usingVortex  bool
-	warnings     []string
+	scanRoot      string
+	outputRoot    string
+	patchPath     string
+	mods          []*modResult
+	totalItems    int
+	scannedFiles  int
+	tweaksFolders int
+	usingVortex   bool
+	warnings      []string
 }
 
 type Scanner struct{}
 
 func NewScanner() *Scanner { return &Scanner{} }
 
-func (s *Scanner) Scan(gameDir string) (*scanResult, error) {
-	abs, err := filepath.Abs(gameDir)
+func (s *Scanner) Scan(scanRoot, outputRoot string) (*scanResult, error) {
+	abs, err := filepath.Abs(scanRoot)
 	if err != nil {
-		return nil, fmt.Errorf("invalid path: %w", err)
+		return nil, fmt.Errorf("invalid scan path: %w", err)
 	}
-	tweaksDir := filepath.Join(abs, "r6", "tweaks")
-	info, err := os.Stat(tweaksDir)
+	info, err := os.Stat(abs)
 	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("TweakXL folder not found: %s", tweaksDir)
+		return nil, fmt.Errorf("scan folder not found: %s", abs)
+	}
+	outputAbs, err := filepath.Abs(outputRoot)
+	if err != nil {
+		return nil, fmt.Errorf("invalid patch destination: %w", err)
 	}
 
 	manifest, sourceByRel := readDeploymentManifest(abs)
 	result := &scanResult{
-		gameDir:     abs,
-		patchPath:   filepath.Join(abs, patchRelativePath),
+		scanRoot:    abs,
+		outputRoot:  outputAbs,
+		patchPath:   filepath.Join(outputAbs, patchRelativePath),
 		usingVortex: manifest != nil,
 	}
+	tweaksDirs, discoveryWarnings, err := findTweaksFolders(abs)
+	result.warnings = append(result.warnings, discoveryWarnings...)
+	if err != nil {
+		return nil, err
+	}
+	if len(tweaksDirs) == 0 {
+		return nil, fmt.Errorf("no r6\\tweaks folders found under: %s", abs)
+	}
+	result.tweaksFolders = len(tweaksDirs)
 
 	var records []*record
-	err = filepath.WalkDir(tweaksDir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if strings.EqualFold(path, filepath.Dir(result.patchPath)) {
-				return filepath.SkipDir
+	for _, tweaksDir := range tweaksDirs {
+		folderID, folderName := folderSource(abs, tweaksDir)
+		err = filepath.WalkDir(tweaksDir, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				result.warnings = append(result.warnings, fmt.Sprintf("%s: %v", path, walkErr))
+				if entry != nil && entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
+			if entry.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if ext != ".yaml" && ext != ".yml" {
+				return nil
+			}
+			result.scannedFiles++
+			rel, relErr := filepath.Rel(abs, path)
+			if relErr != nil {
+				return relErr
+			}
+			modID, modName := sourceForFile(rel, tweaksDir, path, sourceByRel, folderID, folderName)
+			parsed, parseErr := parseTweakFile(path, filepath.ToSlash(rel), modID, modName)
+			if parseErr != nil {
+				result.warnings = append(result.warnings, fmt.Sprintf("%s: %v", rel, parseErr))
+				return nil
+			}
+			records = append(records, parsed...)
 			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan %s: %w", tweaksDir, err)
 		}
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if ext != ".yaml" && ext != ".yml" {
-			return nil
-		}
-		result.scannedFiles++
-		rel, relErr := filepath.Rel(abs, path)
-		if relErr != nil {
-			return relErr
-		}
-		modID, modName := sourceForFile(rel, tweaksDir, path, sourceByRel)
-		parsed, parseErr := parseTweakFile(path, filepath.ToSlash(rel), modID, modName)
-		if parseErr != nil {
-			result.warnings = append(result.warnings, fmt.Sprintf("%s: %v", rel, parseErr))
-			return nil
-		}
-		records = append(records, parsed...)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan tweaks: %w", err)
 	}
 
 	byID := make(map[string]*record, len(records))
@@ -273,7 +292,7 @@ func (s *Scanner) Generate(scan *scanResult, selectedIDs []string) (GenerateResu
 		_ = os.Remove(tempPath)
 		return GenerateResultDTO{}, fmt.Errorf("failed to activate the patch: %w", err)
 	}
-	if err := deactivateLegacyYAMLPatches(scan.gameDir); err != nil {
+	if err := deactivateLegacyYAMLPatches(scan.outputRoot); err != nil {
 		return GenerateResultDTO{}, err
 	}
 
@@ -288,12 +307,14 @@ func (s *Scanner) Generate(scan *scanResult, selectedIDs []string) (GenerateResu
 
 func (r *scanResult) DTO() ScanResultDTO {
 	dto := ScanResultDTO{
-		GameDir:      r.gameDir,
-		TotalItems:   r.totalItems,
-		ScannedFiles: r.scannedFiles,
-		UsingVortex:  r.usingVortex,
-		PatchPath:    r.patchPath,
-		Warnings:     append([]string(nil), r.warnings...),
+		ScanRoot:      r.scanRoot,
+		OutputRoot:    r.outputRoot,
+		TotalItems:    r.totalItems,
+		ScannedFiles:  r.scannedFiles,
+		TweaksFolders: r.tweaksFolders,
+		UsingVortex:   r.usingVortex,
+		PatchPath:     r.patchPath,
+		Warnings:      append([]string(nil), r.warnings...),
 	}
 	for _, mod := range r.mods {
 		m := ModDTO{ID: mod.id, Name: mod.name, SourceLabel: mod.id, ItemCount: len(mod.items), FileCount: len(mod.files)}
@@ -427,10 +448,13 @@ func readDeploymentManifest(gameDir string) (*deploymentManifest, map[string]str
 	return &manifest, mapping
 }
 
-func sourceForFile(rel string, tweaksDir string, path string, sourceByRel map[string]string) (string, string) {
+func sourceForFile(rel string, tweaksDir string, path string, sourceByRel map[string]string, folderID, folderName string) (string, string) {
 	normalized := normalizeRelPath(rel)
 	if source := sourceByRel[normalized]; source != "" {
 		return source, prettyModName(source)
+	}
+	if folderID != "" {
+		return folderID, folderName
 	}
 	relTweak, err := filepath.Rel(tweaksDir, path)
 	if err != nil {
@@ -442,6 +466,49 @@ func sourceForFile(rel string, tweaksDir string, path string, sourceByRel map[st
 		id = strings.TrimSuffix(parts[0], filepath.Ext(parts[0]))
 	}
 	return "fallback:" + id, prettyModName(id)
+}
+
+func findTweaksFolders(root string) ([]string, []string, error) {
+	var folders []string
+	var warnings []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: %v", path, walkErr))
+			if entry != nil && entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !entry.IsDir() || !strings.EqualFold(entry.Name(), "tweaks") {
+			return nil
+		}
+		if strings.EqualFold(filepath.Base(filepath.Dir(path)), "r6") {
+			folders = append(folders, filepath.Clean(path))
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, warnings, fmt.Errorf("failed to search for r6\\tweaks folders: %w", err)
+	}
+	sort.Slice(folders, func(i, j int) bool { return strings.ToLower(folders[i]) < strings.ToLower(folders[j]) })
+	return folders, warnings, nil
+}
+
+func folderSource(scanRoot, tweaksDir string) (string, string) {
+	modRoot := filepath.Dir(filepath.Dir(tweaksDir))
+	if strings.EqualFold(filepath.Clean(modRoot), filepath.Clean(scanRoot)) && IsGameDirectory(scanRoot) {
+		return "", ""
+	}
+	rel, err := filepath.Rel(scanRoot, modRoot)
+	if err != nil || rel == "" {
+		rel = filepath.Base(modRoot)
+	}
+	if rel == "." {
+		rel = filepath.Base(modRoot)
+	}
+	name := filepath.Base(modRoot)
+	return "folder:" + normalizeRelPath(rel), prettyModName(name)
 }
 
 func prettyModName(source string) string {

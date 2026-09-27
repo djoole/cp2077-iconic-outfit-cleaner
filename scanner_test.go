@@ -35,7 +35,7 @@ Items.test_gun:
 		t.Fatal(err)
 	}
 
-	result, err := NewScanner().Scan(game)
+	result, err := NewScanner().Scan(game, game)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestGenerateExpandsInstancesAndRemovesIconicAtRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	scanner := NewScanner()
-	result, err := scanner.Scan(game)
+	result, err := scanner.Scan(game, game)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,12 +102,52 @@ func TestExpandTemplateIDsPreservesScalarText(t *testing.T) {
 	}
 }
 
+func TestScanFindsMO2ModsRecursivelyAndUsesCustomOutput(t *testing.T) {
+	scanRoot := t.TempDir()
+	outputRoot := filepath.Join(t.TempDir(), "Iconic Outfit Cleaner")
+	tweaks := filepath.Join(scanRoot, "Cool Outfit", "r6", "tweaks", "clothes")
+	if err := os.MkdirAll(tweaks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := `Items.mo2_test_top:
+  $base: Items.GenericInnerChestClothing
+  statModifiers:
+    - !append Quality.IconicItem
+`
+	if err := os.WriteFile(filepath.Join(tweaks, "items.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner()
+	result, err := scanner.Scan(scanRoot, outputRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.tweaksFolders != 1 || len(result.mods) != 1 {
+		t.Fatalf("got %d tweak folders and %d mods", result.tweaksFolders, len(result.mods))
+	}
+	if result.mods[0].name != "Cool Outfit" {
+		t.Fatalf("unexpected MO2 mod name %q", result.mods[0].name)
+	}
+	wantPatch := filepath.Join(outputRoot, patchRelativePath)
+	if result.patchPath != wantPatch {
+		t.Fatalf("patch path %q, want %q", result.patchPath, wantPatch)
+	}
+	generated, err := scanner.Generate(result, []string{result.mods[0].id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(generated.PatchPath); err != nil {
+		t.Fatalf("custom output was not generated: %v", err)
+	}
+}
+
 func TestInstalledGameScan(t *testing.T) {
 	game := os.Getenv("CP77_TEST_GAME_DIR")
 	if game == "" {
 		t.Skip("set CP77_TEST_GAME_DIR to run the integration scan")
 	}
-	result, err := NewScanner().Scan(game)
+	result, err := NewScanner().Scan(game, game)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +186,7 @@ func TestInstalledGameGenerate(t *testing.T) {
 		t.Skip("set CP77_TEST_GAME_DIR to run the integration generation")
 	}
 	scanner := NewScanner()
-	result, err := scanner.Scan(game)
+	result, err := scanner.Scan(game, game)
 	if err != nil {
 		t.Fatal(err)
 	}

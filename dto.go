@@ -17,13 +17,20 @@ type ModDTO struct {
 }
 
 type ScanResultDTO struct {
-	GameDir      string   `json:"gameDir"`
-	Mods         []ModDTO `json:"mods"`
-	TotalItems   int      `json:"totalItems"`
-	ScannedFiles int      `json:"scannedFiles"`
-	UsingVortex  bool     `json:"usingVortex"`
-	PatchPath    string   `json:"patchPath"`
-	Warnings     []string `json:"warnings"`
+	ScanRoot      string   `json:"scanRoot"`
+	OutputRoot    string   `json:"outputRoot"`
+	Mods          []ModDTO `json:"mods"`
+	TotalItems    int      `json:"totalItems"`
+	ScannedFiles  int      `json:"scannedFiles"`
+	TweaksFolders int      `json:"tweaksFolders"`
+	UsingVortex   bool     `json:"usingVortex"`
+	PatchPath     string   `json:"patchPath"`
+	Warnings      []string `json:"warnings"`
+}
+
+type PathDefaultsDTO struct {
+	ScanRoot   string `json:"scanRoot"`
+	OutputRoot string `json:"outputRoot"`
 }
 
 type GenerateResultDTO struct {
